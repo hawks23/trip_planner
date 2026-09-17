@@ -79,12 +79,16 @@ COUNTRY_MAIN_AIRPORT = {
     "FR": "CDG",
     "IT": "FCO",
     "ES": "MAD",
+    "DK": "CPH",
 }
 
 
 
 
 CITY_MAIN_AIRPORT = {
+    "kochi": "COK",
+    "cochin": "COK",
+    "copenhagen": "CPH",
     "dhaka": "DAC",
     "delhi": "DEL",
     "new delhi": "DEL",
@@ -139,11 +143,11 @@ def country_name_to_code(text: str):
     # Detect country name inside longer text
     for country in pycountry.countries:
         country_name = country.name.lower()
-        if country_name in text:
+        if re.search(rf"\b{re.escape(country_name)}\b", text):
             return country.alpha_2
 
     for alias, code in COUNTRY_ALIASES.items():
-        if alias in text:
+        if re.search(rf"\b{re.escape(alias)}\b", text):
             return code
 
     return None
@@ -229,21 +233,20 @@ def resolve_location_to_iata(location: str):
     if not location_clean:
         return None
 
-    # City preferred airport
-    if location_clean in CITY_MAIN_AIRPORT:
-        return CITY_MAIN_AIRPORT[location_clean]
-
-    # Country preferred airport
+    # Preserve the city in qualified locations such as Copenhagen, Denmark.
     country_code = country_name_to_code(location_clean)
-    if country_code:
-        airport = get_best_airport_for_country(country_code)
-        if airport:
-            return airport
+    for city in sorted(CITY_MAIN_AIRPORT, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(city)}\b", location_clean):
+            code = CITY_MAIN_AIRPORT[city]
+            if not country_code or airport_country_matches(AIRPORTS[code], country_code):
+                return code
 
     # Exact city match from airport database
     city_matches = []
 
     for iata, airport in AIRPORTS.items():
+        if country_code and not airport_country_matches(airport, country_code):
+            continue
         city = str(airport.get("city", "")).lower().strip()
         name = str(airport.get("name", "")).lower().strip()
 
@@ -251,13 +254,15 @@ def resolve_location_to_iata(location: str):
 
         if city == location_clean:
             score += 100
-        elif location_clean in city:
+        elif city and re.search(rf"\b{re.escape(city)}\b", location_clean):
             score += 70
 
-        if location_clean in name:
+        # Commas introduce region/country qualifiers, not part of the name.
+        place = clean_text(raw_location.split(",")[0])
+        if place and re.search(rf"\b{re.escape(place)}\b", name):
             score += 50
 
-        if "international" in name:
+        if score and "international" in name:
             score += 10
 
         if score > 0:
@@ -266,6 +271,10 @@ def resolve_location_to_iata(location: str):
     if city_matches:
         city_matches.sort(reverse=True)
         return city_matches[0][1]
+
+    # Country fallback is only valid for a country-only location.
+    if country_code and country_name_to_code(raw_location.split(",")[0]) == country_code:
+        return get_best_airport_for_country(country_code)
 
     return None
 
@@ -332,11 +341,11 @@ def parse_route(query: str):
         "worldwide flights",
     ]
 
-    if any(keyword in q_lower for keyword in global_keywords):
+    if any(keyword in q_lower for keyword in global_keywords) and not re.search(r"\b(from|to)\b", q_lower):
         return None, None
 
     # Direct IATA code route: DAC to NRT
-    codes = re.findall(r"\b[A-Z]{3}\b", q)
+    codes = [code for code in re.findall(r"\b[A-Z]{3}\b", q) if code in AIRPORTS]
 
     if len(codes) >= 2:
         dep = codes[0].upper()
@@ -356,6 +365,8 @@ def parse_route(query: str):
         dep_iata = resolve_location_to_iata(origin_text)
         arr_iata = resolve_location_to_iata(dest_text)
 
+        if not dep_iata or not arr_iata:
+            raise ValueError(f"Could not resolve the route from {origin_text!r} to {dest_text!r}. Please provide airport IATA codes.")
         return dep_iata, arr_iata
 
     # Pattern: to Y from X
@@ -371,6 +382,8 @@ def parse_route(query: str):
         dep_iata = resolve_location_to_iata(origin_text)
         arr_iata = resolve_location_to_iata(dest_text)
 
+        if not dep_iata or not arr_iata:
+            raise ValueError(f"Could not resolve the route from {origin_text!r} to {dest_text!r}. Please provide airport IATA codes.")
         return dep_iata, arr_iata
 
     # Pattern: flights from X
@@ -379,6 +392,12 @@ def parse_route(query: str):
     if match:
         origin_text = match.group(1)
         dep_iata = resolve_location_to_iata(origin_text)
+        if not dep_iata:
+            raise ValueError(f"Could not resolve departure location {origin_text!r}.")
+        # Destination may precede 'from': 'a Japan trip from Bangladesh'.
+        destinations = find_location_mentions(q[:match.start()])
+        if destinations:
+            return dep_iata, resolve_location_to_iata(destinations[0])
         return dep_iata, None
 
     # Pattern: flights to X
@@ -387,6 +406,8 @@ def parse_route(query: str):
     if match:
         dest_text = match.group(1)
         arr_iata = resolve_location_to_iata(dest_text)
+        if not arr_iata:
+            raise ValueError(f"Could not resolve arrival location {dest_text!r}.")
         return None, arr_iata
 
     # Fallback: find country/city mentions
@@ -401,7 +422,7 @@ def parse_route(query: str):
         arr_iata = resolve_location_to_iata(mentions[0])
         return DEFAULT_ORIGIN_IATA, arr_iata
 
-    return None, None
+    raise ValueError("Could not identify a flight route. Please provide origin and destination airport IATA codes.")
 
 
 def format_flight(flight: dict):
@@ -452,6 +473,7 @@ Arrival:
 
 
 def search_flights(query: str, limit: int = 10):
+    # print(f"\nEXECUTING FLIGHT SEARCH\n")
     if not API_KEY:
         return (
             "Flight API error: AVIATIONSTACK_API_KEY is missing.\n"
@@ -459,7 +481,10 @@ def search_flights(query: str, limit: int = 10):
             "AVIATIONSTACK_API_KEY=your_api_key_here"
         )
 
-    dep_iata, arr_iata = parse_route(query)
+    try:
+        dep_iata, arr_iata = parse_route(query)
+    except ValueError as exc:
+        return f"Flight route error: {exc}"
 
     params = {
         "access_key": API_KEY,
@@ -473,10 +498,13 @@ def search_flights(query: str, limit: int = 10):
         params["arr_iata"] = arr_iata
 
     try:
+        safe_params = {key: value for key, value in params.items() if key != "access_key"}
+        print(f"\nFlight API request:\n{BASE_URL}\nParams: {safe_params}\n")
         response = requests.get(BASE_URL, params=params, timeout=30)
         data = response.json()
+        # print(f"\nFlight API response:\n{data}\n")
     except requests.exceptions.RequestException as e:
-        return f"Flight API request failed: {e}"
+        return f"Flight API request failed: {str(e).replace(API_KEY, '[REDACTED]')}"
     except ValueError:
         return "Flight API returned invalid JSON."
 
@@ -502,6 +530,8 @@ def search_flights(query: str, limit: int = 10):
 
         return (
             f"No live flight data found{route_text}.\n\n"
+            "This lookup returns individual flights, not connecting itineraries. "
+            "An empty result does not mean that travel between these cities is unavailable. "
             "Note: AviationStack provides live/status flight data, not ticket prices. "
             "For actual fare prices, use a flight-pricing API such as Amadeus."
         )
@@ -516,6 +546,9 @@ def search_flights(query: str, limit: int = 10):
         route_info = f"Live flights to {arr_iata}"
 
     formatted_flights = [format_flight(flight) for flight in flight_data[:limit]]
+
+    # print("\n\nFLIGHT DATA DEBUG:")
+    # print(f"{route_info}\n\n" + "\n\n---\n\n".join(formatted_flights))
 
     return f"{route_info}\n\n" + "\n\n---\n\n".join(formatted_flights)
 

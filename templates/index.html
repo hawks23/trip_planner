@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5ef">
+  <title>Wayfarer · A little further from ordinary</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <script src="{{ url_for('static', path='script.js') }}" defer></script>
+</head>
+<body>
+  <header class="site-header wrap">
+    <a class="brand" href="/" aria-label="Wayfarer home"><span class="brand-icon" aria-hidden="true">↗</span> wayfarer<span class="brand-dot">.</span></a>
+    <span class="header-note">A world of possibility</span>
+  </header>
+  <main class="wrap">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span></span> YOUR NEXT CHAPTER STARTS HERE</p>
+        <h1 id="hero-title">Less planning.<br>More <em>possibility.</em></h1>
+        <p class="intro">A weekend away or a world away. Tell us what you have in mind, and we’ll bring your next adventure into focus.</p>
+        <div class="hero-caption"><span class="small-line"></span> Made for the way you want to travel.</div>
+      </div>
+      <div class="postcard" aria-hidden="true">
+        <div class="postcard-sky"><div class="sun"></div><div class="mountain mountain-back"></div><div class="mountain mountain-front"></div><div class="lake"></div><div class="shore"></div><div class="postcard-label">TAKE THE SCENIC ROUTE <span>↗</span></div></div>
+        <div class="postcard-footer"><span>Somewhere new awaits.</span><span>01 / ∞</span></div>
+      </div>
+    </section>
+
+    <section class="planner" aria-labelledby="planner-title">
+      <div class="section-heading"><div><p class="eyebrow">THE FIRST STEP</p><h2 id="planner-title">Where are we going?</h2></div><span class="step-number">01 — LET’S DREAM</span></div>
+      <form id="trip-form">
+        <label for="user-input">Tell us about your trip</label>
+        <textarea id="user-input" name="user_input" rows="3" minlength="3" maxlength="4000" required placeholder="Create a 7 day plan for travel from Kochi, Kerala to Copenhagen, Denmark." aria-describedby="input-hint"></textarea>
+        <div class="input-meta"><span id="input-hint">Include your starting point, destination, trip length, and budget.</span><span id="char-count">0 / 4000</span></div>
+        <div class="suggestions" aria-label="Try an example"><span>A little inspiration</span><button type="button" data-prompt="Create a 7 day plan for travel from Kochi, Kerala to Copenhagen, Denmark.">A week in Copenhagen ↗</button><button type="button" data-prompt="Plan a relaxed 5 day trip from London to Rome with a moderate budget and a focus on food and history.">Slow days in Rome ↗</button></div>
+        <div class="form-footer"><p>Flights, stays, and a day-by-day plan.<br><span>One thoughtful starting point.</span></p><button class="primary-button" id="submit-button" type="submit"><span>Plan my trip</span><span aria-hidden="true">↗</span></button></div>
+      </form>
+      <div id="loading" class="loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><div><strong>Making room for adventure.</strong><p id="loading-text">Your trip is being planned. This may take a minute or two.</p></div></div>
+      <div id="error" class="error" role="alert" hidden></div>
+    </section>
+
+    <section id="results" class="results" aria-labelledby="results-title" hidden>
+      <div class="section-heading"><div><p class="eyebrow">YOUR NEXT ADVENTURE</p><h2 id="results-title" tabindex="-1">A plan to make your own.</h2></div><button id="copy-button" class="secondary-button" type="button">Copy plan</button></div>
+      <p id="result-query" class="result-query"></p>
+      <article id="answer" class="answer"></article>
+      <details><summary>Explore flight &amp; hotel search results</summary><h3>Flights</h3><pre id="flight-results"></pre><h3>Hotels</h3><pre id="hotel-results"></pre></details>
+      <p class="result-note">A starting point for your travels. Confirm availability and prices before booking.</p>
+    </section>
+    <div class="features"><p><span>01</span> Your kind of journey</p><p><span>02</span> The details, considered</p><p><span>03</span> Space for spontaneity</p></div>
+  </main>
+  <footer class="site-footer wrap"><span>wayfarer.</span><p>Go somewhere. Come back with a story.</p><span>BUILT FOR THE CURIOUS ↗</span></footer>
+  <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+</body>
+</html>

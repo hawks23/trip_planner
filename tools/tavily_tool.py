@@ -38,4 +38,7 @@ def tavily_search(query: str):
 
         results.append(f"{i}. **{title}**\n   {url}\n   {snippet}")
 
+    print("\n\nTavily DEBUG:")
+    print("\n\n".join(results))
+
     return "\n\n".join(results)
