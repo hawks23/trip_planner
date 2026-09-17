@@ -1,6 +1,6 @@
-from tools.tavily_tool import tavily_search
-from tools.flight_tool import search_flights
-from backend import run_travel_agent
+# from tools.tavily_tool import tavily_search
+# from tools.flight_tool import search_flights
+# from backend import run_travel_agent
 
 # res = tavily_search("Best travel destinations in Europe for summer 2024")
 # print(res)
@@ -14,4 +14,10 @@ from backend import run_travel_agent
 #     thread_id="test_user"
 #     )
 
-print(f"\nFinal response\n{response['answer']}")
+# print(f"\nFinal response\n{response['answer']}")
+
+import asyncio
+from mcp_client_test import get_all_tools, tavily_mcp_search
+
+if __name__ == "__main__":
+    asyncio.run(tavily_mcp_search("Best places to visit copenhagen in summer"))
