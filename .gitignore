@@ -58,3 +58,18 @@ htmlcov/
 
 # Logs
 *.log
+
+# Local certificates and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# OS files and local tooling
+.DS_Store
+Thumbs.db
+Desktop.ini
+.ruff_cache/
+.mypy_cache/
+.coverage.*
+coverage.xml

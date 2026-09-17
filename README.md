@@ -70,6 +70,10 @@ trip_planner/
 │   ├── style.css
 │   └── script.js
 ├── tests/                  # API and flight-tool regression tests
+├── Dockerfile              # Container image used locally and on Render
+├── .dockerignore           # Files excluded from Docker's build context
+├── render.yaml             # Render web service configuration
+├── .github/workflows/ci.yml # Container build, tests, and HTTP checks
 └── requirements.txt
 ```
 
@@ -121,6 +125,105 @@ To use the agent without the frontend:
 python test.py
 ```
 
+## Running with Docker
+
+With Docker running, build the image from the project root:
+
+```powershell
+docker build -t wayfarer .
+docker run --rm --name wayfarer -p 127.0.0.1:8000:10000 --env-file .env wayfarer
+```
+
+Open [the planner](http://127.0.0.1:8000). If a local Python server is already
+using port 8000, stop it first or change the mapping to `127.0.0.1:8001:10000`.
+Stop the container with `docker stop wayfarer` from another terminal.
+
+The image runs Python 3.13 as a non-root user. Uvicorn listens on `0.0.0.0` and
+uses the `PORT` environment variable, defaulting to `10000`. It runs one worker
+to match the backend's shared database connection. The agent code is the same
+whether you start it locally or in a container.
+
+`.gitignore` keeps local credentials and generated files out of Git.
+`.dockerignore` also excludes them from Docker's build context. The Dockerfile
+copies only runtime files, so `.env` is never baked into the image. Supply
+credentials at runtime with `--env-file` locally or Render's environment settings.
+PostgreSQL stays outside the container; checkpoints survive container replacements.
+
+## Hosting on Render
+
+Render builds and runs the container in its own cloud directly from this GitHub
+repository. You do not need Docker installed on your computer, a container
+registry, or a locally built image.
+
+1. Push these files to GitHub. The `Dockerfile` must be included in the repository.
+2. Open the [Render dashboard](https://dashboard.render.com/) and choose
+   **New → Web Service**.
+3. Connect your GitHub account and select the repository. You can also paste a
+   public GitHub repository URL, but that option requires manual redeployments.
+4. Use these settings:
+
+   | Setting | Value |
+   | --- | --- |
+   | Language / Runtime | Docker |
+   | Branch | The branch containing this project, usually `main` |
+   | Root Directory | Leave blank if `Dockerfile` is at the repository root |
+   | Dockerfile Path | `./Dockerfile` |
+   | Docker Build Context | `.` |
+   | Docker Command | Leave blank; the Dockerfile supplies it |
+   | Health Check Path | `/api/health` |
+   | Auto-Deploy | On Commit, when using a connected GitHub account |
+
+   If the project is in a repository subfolder, set Root Directory to that folder.
+5. Add these environment variables in Render:
+
+   | Variable | Value to supply |
+   | --- | --- |
+   | `DATABASE_URL` | Your reachable PostgreSQL connection string |
+   | `GROQ_API_KEY` | Your Groq API key |
+   | `TAVILY_API_KEY` | Your Tavily API key |
+   | `AVIATIONSTACK_API_KEY` | Your AviationStack API key |
+
+6. Choose an instance type and click **Deploy Web Service**. Render installs the
+   dependencies, builds the image, and starts the app. Open its `onrender.com`
+   URL once the deployment is live.
+
+The GitHub link supplies the code; the environment variables supply the private
+configuration. Render cannot read your local `.env`. Use your existing database
+or create one separately. No database is included in the application container.
+See [Render's Docker guide](https://render.com/docs/docker).
+
+### Optional: import the settings with a Blueprint
+
+To have Render read the service settings from a file, choose **New → Blueprint**
+instead and select the connected repository. The included `render.yaml` defines
+the Docker runtime, health check, free web-service plan, and automatic deployments.
+Render prompts for the four environment variables. Review the plan before
+creating the service. `render.yaml` is used by the Blueprint flow; it is not
+automatically applied when you create a regular Web Service.
+
+### Automatic builds and deployments
+
+With a connected GitHub account and **On Commit** enabled, Render rebuilds and
+redeploys whenever you push or merge to the linked branch:
+
+```text
+Push to GitHub -> Render builds the Dockerfile -> Health check -> Updated website
+```
+
+The Blueprint also defaults to deployment on commit, so GitHub Actions is not a
+prerequisite for deployment. The included CI workflow independently builds and
+tests the container on GitHub. If you want passing tests to be required before
+release, select **After CI Checks Pass** in Render. For a Blueprint-managed
+service, change `autoDeployTrigger` from `commit` to `checksPass` in `render.yaml`.
+
+Pasting a public repository URL works for the initial deployment, but Render
+requires a connected Git provider for automatic deployments. No deploy hook or
+Render API key is needed in GitHub.
+See [Render's auto-deploy documentation](https://render.com/docs/deploys).
+
+The health check confirms that FastAPI is responding. Submit a real trip after
+deployment to check the database and external API connections too.
+
 ## API
 
 Send a JSON body to `POST /api/plan`:
@@ -144,7 +247,8 @@ itineraries. An empty route result does not mean the trip is impossible. Hotel
 suggestions come from web search rather than a live room-availability service,
 and generated budgets are estimates. Check the details before booking.
 
-The app currently runs locally and has no authentication or booking flow.
+The app has no authentication or booking flow. Anyone who can access a public
+deployment can submit a trip and use the configured API services.
 
 ## Tests
 

@@ -1,0 +1,35 @@
+name: Container checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t wayfarer:test .
+
+      - name: Run regression tests inside the image
+        run: >-
+          docker run --rm
+          --mount type=bind,source="${{ github.workspace }}/tests",target=/app/tests,readonly
+          wayfarer:test python -m unittest discover -s tests -v
+
+      - name: Check container startup and HTTP routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name wayfarer-ci -p 127.0.0.1:18000:10000 wayfarer:test
+          trap 'docker logs wayfarer-ci; docker rm -f wayfarer-ci' EXIT
+          curl --fail --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:18000/api/health
+          curl --fail --silent http://127.0.0.1:18000/ > /dev/null
+          curl --fail --silent http://127.0.0.1:18000/static/script.js > /dev/null
