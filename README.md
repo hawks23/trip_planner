@@ -1,8 +1,9 @@
 # Wayfarer — Travel Planner
 
-A travel planner built with Python, LangGraph, and FastAPI. Give it a trip idea in
-plain English, and it looks up flight information and hotel suggestions before
-putting together a daily itinerary and estimated budget.
+A travel planner built with Python, LangGraph, FastAPI, and the Model Context
+Protocol (MCP). Give it a trip idea in plain English, and it looks up flight,
+hotel, and weather information before putting together a daily itinerary and
+estimated budget.
 
 For example:
 
@@ -13,27 +14,42 @@ You can use the browser interface or run the agent directly from the terminal.
 ## How it works
 
 The main workflow lives in `backend.py`. It uses a LangGraph `StateGraph` with
-four nodes that run in a fixed order:
+five nodes that run in a fixed order:
 
 ```text
 User query
     |
     v
-Flight search -> Hotel search -> Itinerary -> Final response
+Flight search -> Hotel search -> Weather -> Itinerary -> Final response
 ```
 
-1. **Flight search** passes the query to `tools/flight_tool.py`. The tool extracts
-   the route, resolves locations to airport IATA codes, and requests flight
-   records from AviationStack.
-2. **Hotel search** sends a query to Tavily through `tools/tavily_tool.py`. It
-   returns up to five web results with titles, links, and short excerpts.
-3. **Itinerary** combines the original request with both search results and asks
-   the model to draft a practical plan.
-4. **Final response** makes a second model call to organize the draft into a trip
-   summary, flights, hotels, daily itinerary, budget, and recommendations.
+1. **Flight search** passes the query through `mcp_client.py` to the AviationStack
+   MCP server and asks the model to summarize the available airport and airline
+   data.
+2. **Hotel search** sends a query to the remote Tavily MCP server. It returns web
+   search results with titles, links, and short excerpts.
+3. **Weather** extracts the destination and calls the custom weather MCP server
+   for current conditions and a forecast.
+4. **Itinerary** combines the original request with the flight, hotel, and
+   weather results and asks the model to draft a practical plan.
+5. **Final response** makes a second model call to organize the draft into a trip
+   summary, flights, hotels, weather, daily itinerary, budget, and recommendations.
 
-The first two nodes call search tools directly. The last two use Groq through
-`ChatGroq`, configured with `openai/gpt-oss-120b` and a temperature of `0.0`.
+MCP tools are loaded and invoked through `mcp_client.py` using
+`MultiServerMCPClient`. The application currently demonstrates different MCP
+server arrangements:
+
+| Server | Type | Connection | Purpose |
+| --- | --- | --- | --- |
+| Tavily | Remote MCP server | Streamable HTTP | Hotel and web search |
+| AviationStack | Local MCP server | stdio through `uvx` | Airport and airline data |
+| Weather | Custom local MCP server | stdio through Python | Current weather and forecasts |
+
+The custom server is implemented in `custom_weather_mcp.py` with FastMCP and
+calls the OpenWeather API. This shows that MCP servers can be hosted remotely,
+run locally from an installed package, or built in the project for a specific
+API and workflow. The model calls use Groq through `ChatGroq`, configured with
+`openai/gpt-oss-120b` and a temperature of `0.0`.
 
 Each node reads and updates a shared `TravelState`, which holds the query,
 messages, search results, itinerary, and a counter. The field named `llm_calls`
@@ -62,8 +78,10 @@ trip_planner/
 ├── backend.py              # Graph, state, prompts, model, and checkpoints
 ├── test.py                 # Interactive terminal entry point
 ├── tools/
-│   ├── flight_tool.py      # Route parsing and AviationStack requests
-│   └── tavily_tool.py      # Hotel web search and result formatting
+│   └── flight_tool.py      # Legacy route parsing and flight helpers
+├── mcp_client.py           # Remote and local MCP client configuration
+├── custom_weather_mcp.py   # Custom FastMCP server for OpenWeather
+├── mcp_client_test.py      # MCP connectivity/tool inspection script
 ├── templates/
 │   └── index.html          # Browser interface
 ├── static/
@@ -94,7 +112,13 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require
 GROQ_API_KEY=your_groq_key
 TAVILY_API_KEY=your_tavily_key
 AVIATIONSTACK_API_KEY=your_aviationstack_key
+OPENWEATHER_API_KEY=your_openweather_key
 ```
+
+The MCP client also expects `uvx` to be available for the local AviationStack
+server. The custom weather MCP server currently uses the Python executable and
+absolute script path configured in `mcp_client.py`; update those values for your
+own machine before running the application.
 
 The database must be reachable and the database user must be able to create the
 checkpoint tables. The backend sets these up when it is first loaded. It also
